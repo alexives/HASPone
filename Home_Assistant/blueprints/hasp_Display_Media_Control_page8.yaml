@@ -49,6 +49,14 @@ blueprint:
       default: "media_title"
       selector:
         text:
+    maxvolume:
+      name: "Maximum volume level"
+      description: "Select the maximum volume level of your speaker"
+      default: 100
+      selector:
+        number:
+          min: 0
+          max: 100
 
 mode: parallel
 max_exceeded: silent
@@ -132,8 +140,8 @@ variables:
     {%- set green=(state_attr(color.source, "rgb_color")[1] * brightness)|int -%}
     {%- set blue=(state_attr(color.source, "rgb_color")[2] * brightness)|int -%}
     {{ (red|bitwise_and(248)*256) + (green|bitwise_and(252)*8) + (blue|bitwise_and(248)/8)|int }}
-
-  volume: "{% if state_attr(mediaplayer, 'volume_level')|lower == 'none' %}0{% else %}{{(state_attr(mediaplayer, 'volume_level')*255)|int}}{% endif %}"
+  maxvolume: !input maxvolume
+  volume: "{% if state_attr(mediaplayer, 'volume_level')|lower == 'none' %}0{% else %}{{(state_attr(mediaplayer, 'volume_level')*25500/maxvolume)|int}}{% endif %}"
   button4text: "{% if state_attr(mediaplayer, button4attribute)|lower == 'none' %}{% else %}{{state_attr(mediaplayer, button4attribute)|wordwrap(19, wrapstring='\\\\r')}}{% endif %}"
   # button4text: '{{state_attr(mediaplayer, button4attribute)|wordwrap(19, wrapstring="\\\\r")}}'
   button4font: "{% set attr_length = button4text|safe|length%}{% if attr_length <= 6 -%}9{% elif attr_length <= 8 %}8{% elif attr_length <= 10 %}7{% else %}6{%- endif %}"
@@ -227,7 +235,7 @@ action:
           - service: mqtt.publish
             data:
               topic: "{{volumecommandtopic}}"
-              payload: "{{volume}}"
+              payload: "{{(volume | int) / maxvolume * 100}}"
       #########################################################################
       # Update button4attribute and button5attribute
       - conditions:
@@ -258,11 +266,13 @@ action:
                       - conditions:
                           - condition: template
                             value_template: '{{ (trigger.topic == jsontopic) and (trigger.payload_json.event == volumeobject ~ ".val") }}'
+                        variables:
+                          maxvolume: !input maxvolume
                         sequence:
                           - service: media_player.volume_set
                             entity_id: !input mediaplayer
                             data:
-                              volume_level: "{{trigger.payload_json.value/255}}"
+                              volume_level: "{{(trigger.payload_json.value | int) / 25500 * maxvolume}}"
                       #########################################################################
                       # Previous track button was pressed
                       - conditions:

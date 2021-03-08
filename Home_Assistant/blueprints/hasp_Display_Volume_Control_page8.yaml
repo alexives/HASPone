@@ -37,6 +37,14 @@ blueprint:
       selector:
         entity:
           domain: media_player
+    maxvolume:
+      name: "Maximum volume level"
+      description: "Select the maximum volume level of your speaker"
+      default: 100
+      selector:
+        number:
+          min: 0
+          max: 100
 
 mode: parallel
 max_exceeded: silent
@@ -84,7 +92,8 @@ variables:
     {%- set green=(state_attr(color.source, "rgb_color")[1] * brightness)|int -%}
     {%- set blue=(state_attr(color.source, "rgb_color")[2] * brightness)|int -%}
     {{ (red|bitwise_and(248)*256) + (green|bitwise_and(252)*8) + (blue|bitwise_and(248)/8)|int }}
-  volume: '{% if state_attr(volumeentity, "volume_level")|lower == "none" %}0{% else %}{{(state_attr(volumeentity, "volume_level")*255)|int}}{% endif %}'
+  maxvolume: !input maxvolume
+  volume: '{% if state_attr(volumeentity, "volume_level")|lower == "none" %}0{% else %}{{(state_attr(volumeentity, "volume_level")*25500/maxvolume)|int}}{% endif %}'
 
 trigger_variables:
   haspdevice: !input haspdevice
@@ -154,17 +163,21 @@ action:
       - conditions: # volume has changed value, on/off state has also changed, and we're currently on the selected page
           - condition: template
             value_template: '{{ (trigger.platform == "state") and (trigger.entity_id == volumeentity) }}'
+        variables:
+          maxvolume: !input maxvolume
         sequence:
           - service: mqtt.publish
             data:
               topic: "{{volumecommandtopic}}.val"
-              payload: "{{volume}}"
+              payload: "{{(volume | int) / maxvolume * 100}}"
 
       #########################################################################
       # Handle MQTT message triggers
       - conditions:
           - condition: template
             value_template: '{{ trigger.platform == "mqtt" }}'
+        variables:
+          maxvolume: !input maxvolume
         sequence:
           - choose:
               #########################################################################
@@ -176,7 +189,7 @@ action:
                   - service: media_player.volume_set
                     entity_id: !input volumeentity
                     data:
-                      volume_level: "{{ (trigger.payload | int) / 255 }}"
+                      volume_level: "{{ (trigger.payload | int) / 25500 * maxvolume }}"
               #########################################################################
               # Theme: Apply unselected foreground color on change
               - conditions:
